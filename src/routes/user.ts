@@ -5,6 +5,14 @@ import Activity from '../models/Activity.js';
 import Referral from '../models/Referral.js';
 import { getConfig } from '../config/manager.js';
 import { config as staticConfig } from '../config/ads.js';
+import {
+  successResponse,
+  createdResponse,
+  validationError,
+  notFoundError,
+  serverError,
+  validateUserId
+} from '../middleware/validate.js';
 
 const router = Router();
 
@@ -59,19 +67,15 @@ router.post('/withdraw', async (req, res) => {
       console.error('Error creating withdrawal activity:', actError);
     }
 
-    res.json({
-      success: true,
-      message: 'Withdrawal request submitted successfully',
-      data: {
-        id: withdrawal._id,
-        amount: withdrawal.amount,
-        balance: user.balance,
-        status: withdrawal.status
-      }
-    });
+    return successResponse(res, {
+      id: withdrawal._id,
+      amount: withdrawal.amount,
+      balance: user.balance,
+      status: withdrawal.status
+    }, 'Withdrawal request submitted successfully');
   } catch (error) {
     console.error('Error processing withdrawal:', error);
-    res.status(500).json({ success: false, error: 'Failed to process withdrawal' });
+    return serverError(res, 'Failed to process withdrawal');
   }
 });
 
@@ -81,29 +85,50 @@ router.get('/withdrawals', async (req, res) => {
     const userId = req.query.userId as string || 'demo-user';
     const withdrawals = await Withdrawal.find({ userId }).sort({ createdAt: -1 });
     
-    res.json({
-      success: true,
-      data: withdrawals
-    });
+    return successResponse(res, withdrawals);
   } catch (error) {
     console.error('Error fetching withdrawals:', error);
-    res.status(500).json({ success: false, error: 'Failed to fetch withdrawal history' });
+    return serverError(res, 'Failed to fetch withdrawal history');
   }
 });
 
-// Get referral list
+// Get referral list - requires userId
 router.get('/referrals', async (req, res) => {
   try {
-    const userId = req.query.userId as string || 'demo-user';
+    const userId = req.query.userId as string;
+    
+    // Verify userId is provided
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Bad Request',
+        message: 'userId query parameter is required',
+        statusCode: 400
+      });
+    }
+    
+    // Verify user exists
+    const user = await User.findOne({ userId });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'Not Found',
+        message: 'User not found',
+        statusCode: 404
+      });
+    }
+    
     const referrals = await Referral.find({ referrerId: userId }).sort({ createdAt: -1 });
     
-    res.json({
-      success: true,
-      data: referrals
+    return successResponse(res, {
+      userId,
+      referralCode: user.referralCode,
+      count: referrals.length,
+      referrals
     });
   } catch (error) {
     console.error('Error fetching referrals:', error);
-    res.status(500).json({ success: false, error: 'Failed to fetch referrals' });
+    return serverError(res, 'Failed to fetch referrals');
   }
 });
 
@@ -148,38 +173,35 @@ router.get('/profile', async (req, res) => {
     const adsWatched = user.adsWatched || { rewarded: 0, banner: 0 };
     const totalAdsWatched = adsWatched.rewarded + adsWatched.banner;
     
-    res.json({
-      success: true,
-      data: {
-        id: user.userId,
-        name: user.name,
-        email: user.email,
-        avatar: user.avatar,
-        referralCode: user.referralCode,
-        balance: user.balance,
-        totalEarned: user.totalEarned,
-        tasksCompleted: user.tasksCompleted,
-        level: user.level,
-        streak: user.streak,
-        lastCheckIn: user.lastCheckIn,
-        joinedAt: user.joinedAt,
-        adsWatched: {
-          rewarded: adsWatched.rewarded,
-          banner: adsWatched.banner,
-          total: totalAdsWatched
-        },
-        adsLimit: {
-          rewarded: currentAdsConfig.rewardedLimit || 20,
-          banner: currentAdsConfig.bannerLimit || 20,
-          total: (currentAdsConfig.rewardedLimit || 20) + (currentAdsConfig.bannerLimit || 20)
-        },
-        adsReward: currentAdsConfig.rewardPerAd,
-        monetagAppId: currentAdsConfig.monetagAppId
-      }
+    return successResponse(res, {
+      id: user.userId,
+      name: user.name,
+      email: user.email,
+      avatar: user.avatar,
+      referralCode: user.referralCode,
+      balance: user.balance,
+      totalEarned: user.totalEarned,
+      tasksCompleted: user.tasksCompleted,
+      level: user.level,
+      streak: user.streak,
+      lastCheckIn: user.lastCheckIn,
+      joinedAt: user.joinedAt,
+      adsWatched: {
+        rewarded: adsWatched.rewarded,
+        banner: adsWatched.banner,
+        total: totalAdsWatched
+      },
+      adsLimit: {
+        rewarded: currentAdsConfig.rewardedLimit || 20,
+        banner: currentAdsConfig.bannerLimit || 20,
+        total: (currentAdsConfig.rewardedLimit || 20) + (currentAdsConfig.bannerLimit || 20)
+      },
+      adsReward: currentAdsConfig.rewardPerAd,
+      monetagAppId: currentAdsConfig.monetagAppId
     });
   } catch (error) {
     console.error('Error fetching profile:', error);
-    res.status(500).json({ success: false, error: 'Failed to fetch profile' });
+    return serverError(res, 'Failed to fetch profile');
   }
 });
 
@@ -254,23 +276,20 @@ router.post('/watch-ad', async (req, res) => {
       isPositive: true
     });
 
-    res.json({
-      success: true,
-      data: {
-        adType,
-        adsWatched: user.adsWatched,
-        balance: user.balance,
-        totalEarned: user.totalEarned,
-        reward,
-        remaining: {
-          rewarded: rewardedLimit - user.adsWatched.rewarded,
-          banner: bannerLimit - user.adsWatched.banner
-        }
+    return successResponse(res, {
+      adType,
+      adsWatched: user.adsWatched,
+      balance: user.balance,
+      totalEarned: user.totalEarned,
+      reward,
+      remaining: {
+        rewarded: rewardedLimit - user.adsWatched.rewarded,
+        banner: bannerLimit - user.adsWatched.banner
       }
     });
   } catch (error) {
     console.error('Error watching ad:', error);
-    res.status(500).json({ success: false, error: 'Failed to process ad reward' });
+    return serverError(res, 'Failed to process ad reward');
   }
 });
 
@@ -280,21 +299,18 @@ router.get('/stats', async (req, res) => {
     const userId = req.query.userId as string || 'demo-user';
     const user = await User.findOne({ userId });
     
-    res.json({
-      success: true,
-      data: {
-        todayEarned: 4.35,
-        todayCompleted: 7,
-        weeklyGrowth: '+23%',
-        totalTasks: user?.tasksCompleted || 0,
-        streak: user?.streak || 0,
-        balance: user?.balance || 0,
-        totalEarned: user?.totalEarned || 0
-      }
+    return successResponse(res, {
+      todayEarned: 4.35,
+      todayCompleted: 7,
+      weeklyGrowth: '+23%',
+      totalTasks: user?.tasksCompleted || 0,
+      streak: user?.streak || 0,
+      balance: user?.balance || 0,
+      totalEarned: user?.totalEarned || 0
     });
   } catch (error) {
     console.error('Error fetching stats:', error);
-    res.status(500).json({ success: false, error: 'Failed to fetch stats' });
+    return serverError(res, 'Failed to fetch stats');
   }
 });
 
@@ -309,36 +325,55 @@ router.patch('/profile', async (req, res) => {
       { new: true, upsert: true }
     );
     
-    res.json({
-      success: true,
-      message: 'Profile updated',
-      data: { 
-        id: user?.userId,
-        name: user?.name,
-        email: user?.email,
-        avatar: user?.avatar,
-        updatedAt: new Date().toISOString() 
-      }
-    });
+    return successResponse(res, { 
+      id: user?.userId,
+      name: user?.name,
+      email: user?.email,
+      avatar: user?.avatar,
+      updatedAt: new Date().toISOString() 
+    }, 'Profile updated');
   } catch (error) {
     console.error('Error updating profile:', error);
-    res.status(500).json({ success: false, error: 'Failed to update profile' });
+    return serverError(res, 'Failed to update profile');
   }
 });
 
-// Get user activities
+// Get user activities - requires userId
 router.get('/activities', async (req, res) => {
   try {
-    const userId = req.query.userId as string || 'demo-user';
+    const userId = req.query.userId as string;
+    
+    // Verify userId is provided
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Bad Request',
+        message: 'userId query parameter is required',
+        statusCode: 400
+      });
+    }
+    
+    // Verify user exists
+    const user = await User.findOne({ userId });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'Not Found',
+        message: 'User not found',
+        statusCode: 404
+      });
+    }
+    
     const activities = await Activity.find({ userId }).sort({ createdAt: -1 });
     
-    res.json({
-      success: true,
-      data: activities
+    return successResponse(res, {
+      userId,
+      count: activities.length,
+      activities
     });
   } catch (error) {
     console.error('Error fetching activities:', error);
-    res.status(500).json({ success: false, error: 'Failed to fetch activities' });
+    return serverError(res, 'Failed to fetch activities');
   }
 });
 

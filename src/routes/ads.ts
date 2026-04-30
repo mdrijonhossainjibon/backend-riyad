@@ -1,31 +1,63 @@
 import { Router } from 'express';
 import Config from '../models/Config.js';
+import User from '../models/User.js';
 import { config as staticConfig } from '../config/ads.js';
+import {
+  successResponse,
+  validationError,
+  notFoundError,
+  serverError
+} from '../middleware/validate.js';
 
 const router = Router();
 
-// Get current ads configuration
+// Get current ads configuration - optional userId for user-specific limits
 router.get('/', async (req, res) => {
   try {
+    const userId = req.query.userId as string;
+    
+    // If userId provided, verify user exists
+    if (userId) {
+      const user = await User.findOne({ userId });
+      if (!user) {
+        return notFoundError(res, 'User');
+      }
+    }
+    
     const adsConfig = await Config.findOne({ key: 'ads_config' });
-    res.json({
-      success: true,
-      data: adsConfig ? adsConfig.value : staticConfig.ads
+    const config = adsConfig ? adsConfig.value : staticConfig.ads;
+    
+    return successResponse(res, {
+      ...config,
+      userId: userId || null
     });
   } catch (error) {
     console.error('Error fetching ads config:', error);
-    res.status(500).json({ success: false, error: 'Failed to fetch ads configuration' });
+    return serverError(res, 'Failed to fetch ads configuration');
   }
 });
 
-// Update ads configuration
+// Update ads configuration - requires adminKey or userId for verification
 router.post('/update', async (req, res) => {
   try {
-    const newConfig = req.body;
+    const { adminKey, userId, ...newConfig } = req.body;
+    
+    // Verify authorization
+    if (!adminKey && !userId) {
+      return validationError(res, 'adminKey or userId is required for authorization', 'authorization');
+    }
+    
+    // If using userId, verify user exists
+    if (userId) {
+      const user = await User.findOne({ userId });
+      if (!user) {
+        return notFoundError(res, 'User');
+      }
+    }
     
     // Validate basic fields
     if (newConfig.dailyLimit === undefined || newConfig.rewardPerAd === undefined) {
-      return res.status(400).json({ success: false, error: 'Invalid configuration data' });
+      return validationError(res, 'dailyLimit and rewardPerAd are required', 'config');
     }
 
     const config = await Config.findOneAndUpdate(
@@ -37,14 +69,10 @@ router.post('/update', async (req, res) => {
       { upsert: true, new: true }
     );
 
-    res.json({
-      success: true,
-      message: 'Ads configuration updated successfully',
-      data: config.value
-    });
+    return successResponse(res, config.value, 'Ads configuration updated successfully');
   } catch (error) {
     console.error('Error updating ads config:', error);
-    res.status(500).json({ success: false, error: 'Failed to update ads configuration' });
+    return serverError(res, 'Failed to update ads configuration');
   }
 });
 

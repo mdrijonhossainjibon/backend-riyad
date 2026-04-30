@@ -1,6 +1,12 @@
 import { Router } from 'express';
 import Task from '../models/Task.js';
 import User from '../models/User.js';
+import {
+  successResponse,
+  validationError,
+  notFoundError,
+  serverError
+} from '../middleware/validate.js';
 
 const router = Router();
 
@@ -38,9 +44,21 @@ const defaultTasks = [
   { id: 'b7', category: 'bonus', status: 'start', reward: '$5.00', rewardValue: 5.0, tag: 'Limited' },
 ];
 
-// Get all tasks - grouped by category
+// Get all tasks - grouped by category (requires userId)
 router.get('/', async (req, res) => {
   try {
+    const userId = req.query.userId as string;
+    
+    // Validate userId is provided
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Bad Request',
+        message: 'userId query parameter is required',
+        statusCode: 400
+      });
+    }
+
     // Seed tasks if none exist
     const count = await Task.countDocuments();
     if (count === 0) {
@@ -48,20 +66,41 @@ router.get('/', async (req, res) => {
       console.log('✅ Tasks seeded');
     }
 
+    // Get user-specific task progress
+    const user = await User.findOne({ userId });
+    const userTaskProgress = user?.taskProgress || new Map();
+
     const tasks = await Task.find().sort({ category: 1, id: 1 });
+    
+    // Merge task data with user progress
+    const tasksWithProgress = tasks.map(task => {
+      const progress = userTaskProgress.get(task.id);
+      return {
+        ...task.toObject(),
+        status: progress?.status || task.status,
+        progress: progress?.progress || task.progress || 0,
+        currentCount: progress?.currentCount || task.currentCount || 0,
+        completedAt: progress?.completedAt || null
+      };
+    });
     
     // Group by category
     const tasksData = {
-      daily: tasks.filter(t => t.category === 'daily'),
-      ads: tasks.filter(t => t.category === 'ads'),
-      social: tasks.filter(t => t.category === 'social'),
-      bonus: tasks.filter(t => t.category === 'bonus'),
+      daily: tasksWithProgress.filter(t => t.category === 'daily'),
+      ads: tasksWithProgress.filter(t => t.category === 'ads'),
+      social: tasksWithProgress.filter(t => t.category === 'social'),
+      bonus: tasksWithProgress.filter(t => t.category === 'bonus'),
     };
 
-    res.json({ success: true, data: tasksData });
+    return successResponse(res, {
+      userId,
+      tasks: tasksData,
+      totalTasks: tasks.length,
+      completedTasks: tasksWithProgress.filter(t => t.status === 'done').length
+    });
   } catch (error) {
     console.error('Error fetching tasks:', error);
-    res.status(500).json({ success: false, error: 'Failed to fetch tasks' });
+    return serverError(res, 'Failed to fetch tasks');
   }
 });
 
@@ -93,19 +132,15 @@ router.post('/:taskId/claim', async (req, res) => {
       { new: true, upsert: true }
     );
 
-    res.json({ 
-      success: true, 
-      message: 'Task claimed successfully',
-      data: { 
-        taskId, 
-        reward: task.reward, 
-        newBalance: user?.balance || 0,
-        claimedAt: new Date().toISOString() 
-      }
-    });
+    return successResponse(res, { 
+      taskId, 
+      reward: task.reward, 
+      newBalance: user?.balance || 0,
+      claimedAt: new Date().toISOString() 
+    }, 'Task claimed successfully');
   } catch (error) {
     console.error('Error claiming task:', error);
-    res.status(500).json({ success: false, error: 'Failed to claim task' });
+    return serverError(res, 'Failed to claim task');
   }
 });
 
@@ -142,21 +177,17 @@ router.post('/:taskId/start', async (req, res) => {
 
     await task.save();
 
-    res.json({ 
-      success: true, 
-      message: `Task progress updated: ${task.status}`,
-      data: { 
-        taskId, 
-        status: task.status,
-        progress: task.progress,
-        currentCount: task.currentCount,
-        requiredCount: task.requiredCount,
-        updatedAt: new Date().toISOString() 
-      }
-    });
+    return successResponse(res, { 
+      taskId, 
+      status: task.status,
+      progress: task.progress,
+      currentCount: task.currentCount,
+      requiredCount: task.requiredCount,
+      updatedAt: new Date().toISOString() 
+    }, `Task progress updated: ${task.status}`);
   } catch (error) {
     console.error('Error updating task:', error);
-    res.status(500).json({ success: false, error: 'Failed to update task' });
+    return serverError(res, 'Failed to update task');
   }
 });
 
@@ -198,16 +229,13 @@ router.get('/checkin/status', async (req, res) => {
       });
     }
 
-    res.json({
-      success: true,
-      data: {
-        claimed: false,
-        remainingTime: 0
-      }
+    return successResponse(res, {
+      claimed: false,
+      remainingTime: 0
     });
   } catch (error) {
     console.error('Error checking check-in status:', error);
-    res.status(500).json({ success: false, error: 'Failed to check status' });
+    return serverError(res, 'Failed to check status');
   }
 });
 
@@ -252,19 +280,15 @@ router.post('/checkin', async (req, res) => {
     // Calculate streak (simplified)
     const streak = updatedUser?.streak || 1;
 
-    res.json({ 
-      success: true, 
-      message: 'Daily check-in successful',
-      data: { 
-        reward, 
-        checkedInAt: new Date().toISOString(),
-        streak,
-        newBalance: updatedUser?.balance || 0
-      }
-    });
+    return successResponse(res, { 
+      reward, 
+      checkedInAt: new Date().toISOString(),
+      streak,
+      newBalance: updatedUser?.balance || 0
+    }, 'Daily check-in successful');
   } catch (error) {
     console.error('Error check-in:', error);
-    res.status(500).json({ success: false, error: 'Failed to check in' });
+    return serverError(res, 'Failed to check in');
   }
 });
 

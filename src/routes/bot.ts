@@ -1,5 +1,12 @@
 import { Router } from 'express';
 import Config from '../models/Config.js';
+import User from '../models/User.js';
+import {
+  successResponse,
+  validationError,
+  notFoundError,
+  serverError
+} from '../middleware/validate.js';
 
 const router = Router();
 
@@ -11,28 +18,53 @@ const defaultBotConfig = {
   channelUrl: 'https://t.me/TaskWaveChannel'
 };
 
-// Get bot configuration
+// Get bot configuration - optional userId for user-specific data
 router.get('/config', async (req, res) => {
   try {
+    const userId = req.query.userId as string;
+    
+    // If userId provided, verify user exists
+    if (userId) {
+      const user = await User.findOne({ userId });
+      if (!user) {
+        return notFoundError(res, 'User');
+      }
+    }
+    
     const botConfig = await Config.findOne({ key: 'bot_config' });
-    res.json({
-      success: true,
-      data: botConfig ? botConfig.value : defaultBotConfig
+    const config = botConfig ? botConfig.value : defaultBotConfig;
+    
+    return successResponse(res, {
+      ...config,
+      userId: userId || null
     });
   } catch (error) {
     console.error('Error fetching bot config:', error);
-    res.status(500).json({ success: false, error: 'Failed to fetch bot configuration' });
+    return serverError(res, 'Failed to fetch bot configuration');
   }
 });
 
-// Update bot configuration
+// Update bot configuration - requires adminKey or userId for verification
 router.post('/config/update', async (req, res) => {
   try {
-    const newConfig = req.body;
+    const { adminKey, userId, ...newConfig } = req.body;
+    
+    // Verify authorization
+    if (!adminKey && !userId) {
+      return validationError(res, 'adminKey or userId is required for authorization', 'authorization');
+    }
+    
+    // If using userId, verify user exists
+    if (userId) {
+      const user = await User.findOne({ userId });
+      if (!user) {
+        return notFoundError(res, 'User');
+      }
+    }
     
     // Validate botUsername is present
     if (!newConfig.botUsername) {
-      return res.status(400).json({ success: false, error: 'botUsername is required' });
+      return validationError(res, 'botUsername is required', 'botUsername');
     }
 
     const config = await Config.findOneAndUpdate(
@@ -44,14 +76,10 @@ router.post('/config/update', async (req, res) => {
       { upsert: true, new: true }
     );
 
-    res.json({
-      success: true,
-      message: 'Bot configuration updated successfully',
-      data: config.value
-    });
+    return successResponse(res, config.value, 'Bot configuration updated successfully');
   } catch (error) {
     console.error('Error updating bot config:', error);
-    res.status(500).json({ success: false, error: 'Failed to update bot configuration' });
+    return serverError(res, 'Failed to update bot configuration');
   }
 });
 

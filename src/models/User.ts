@@ -6,6 +6,13 @@ export interface IAdWatchData {
   lastWatch: Date | null;
 }
 
+export interface ITaskProgress {
+  status: 'start' | 'progress' | 'claim' | 'done';
+  progress: number;
+  currentCount: number;
+  completedAt?: Date;
+}
+
 export interface IUser extends Document {
   userId: string;
   name: string;
@@ -20,6 +27,7 @@ export interface IUser extends Document {
   lastCheckIn?: Date;
   joinedAt: Date;
   adsWatched: IAdWatchData;
+  taskProgress: Map<string, ITaskProgress>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -40,6 +48,13 @@ const AdWatchSchema: Schema = new Schema({
   lastWatch: { type: Date, default: null }
 }, { _id: false });
 
+const TaskProgressSchema: Schema = new Schema({
+  status: { type: String, enum: ['start', 'progress', 'claim', 'done'], default: 'start' },
+  progress: { type: Number, default: 0 },
+  currentCount: { type: Number, default: 0 },
+  completedAt: { type: Date, default: null }
+}, { _id: false });
+
 const UserSchema: Schema = new Schema({
   userId: { type: String, required: true, unique: true },
   name: { type: String, required: true },
@@ -53,7 +68,8 @@ const UserSchema: Schema = new Schema({
   streak: { type: Number, default: 0 },
   lastCheckIn: { type: Date, default: null },
   joinedAt: { type: Date, default: Date.now },
-  adsWatched: { type: AdWatchSchema, default: () => ({ rewarded: 0, banner: 0, lastWatch: null }) }
+  adsWatched: { type: AdWatchSchema, default: () => ({ rewarded: 0, banner: 0, lastWatch: null }) },
+  taskProgress: { type: Map, of: TaskProgressSchema, default: () => ({}) }
 }, {
   timestamps: true
 });

@@ -31,7 +31,15 @@ app.use(express.urlencoded({ extended: true }));
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.status(200).json({
+    success: true,
+    data: {
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime()
+    },
+    statusCode: 200
+  });
 });
 
 // Routes
@@ -42,13 +50,54 @@ app.use('/api/bot', botRoutes);
 
 // 404 handler
 app.use((req, res) => {
-  res.status(404).json({ error: 'Not found' });
+  res.status(404).json({
+    success: false,
+    error: 'Not Found',
+    message: `Route ${req.method} ${req.path} not found`,
+    statusCode: 404
+  });
 });
 
 // Error handler
-app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error(err.stack);
-  res.status(500).json({ error: 'Internal server error' });
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('[Error]', err);
+  
+  // Handle specific error types
+  if (err.name === 'ValidationError') {
+    return res.status(400).json({
+      success: false,
+      error: 'Validation Error',
+      message: err.message,
+      statusCode: 400
+    });
+  }
+  
+  if (err.name === 'CastError') {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid ID Format',
+      message: 'The provided ID is not valid',
+      statusCode: 400
+    });
+  }
+  
+  if (err.code === 11000) {
+    return res.status(409).json({
+      success: false,
+      error: 'Duplicate Entry',
+      message: 'A record with this information already exists',
+      statusCode: 409
+    });
+  }
+  
+  // Default server error
+  const statusCode = err.statusCode || err.status || 500;
+  res.status(statusCode).json({
+    success: false,
+    error: err.name || 'Internal Server Error',
+    message: err.message || 'Something went wrong',
+    statusCode
+  });
 });
 
 app.listen(PORT, () => {

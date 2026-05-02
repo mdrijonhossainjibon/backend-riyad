@@ -135,7 +135,7 @@ router.get('/referrals', async (req, res) => {
 // Get user profile
 router.get('/profile', async (req, res) => {
   try {
-    const { userId = 'demo-user', first_name, last_name, username } = req.query;
+    const { userId = 'demo-user', first_name, last_name, username, photo_url } = req.query;
     let user = await User.findOne({ userId });
     
     // Create default user if not exists
@@ -173,11 +173,16 @@ router.get('/profile', async (req, res) => {
     const adsWatched = user.adsWatched || { rewarded: 0, banner: 0 };
     const totalAdsWatched = adsWatched.rewarded + adsWatched.banner;
     
+    // Use Telegram photo_url directly (real-time), not from database
+    const tgPhotoUrl = photo_url as string | undefined;
+    
     return successResponse(res, {
       id: user.userId,
+      first_name: user.name,
       name: user.name,
       email: user.email,
-      avatar: user.avatar,
+      photo_url: tgPhotoUrl || null,  // Real-time from Telegram SDK
+      avatar: tgPhotoUrl || null,     // Same for compatibility
       referralCode: user.referralCode,
       balance: user.balance,
       totalEarned: user.totalEarned,
@@ -329,7 +334,6 @@ router.patch('/profile', async (req, res) => {
       id: user?.userId,
       name: user?.name,
       email: user?.email,
-      avatar: user?.avatar,
       updatedAt: new Date().toISOString() 
     }, 'Profile updated');
   } catch (error) {

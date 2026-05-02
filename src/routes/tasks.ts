@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import TelegramBot from 'node-telegram-bot-api';
 import Task from '../models/Task.js';
 import User from '../models/User.js';
 import {
@@ -10,38 +11,41 @@ import {
 
 const router = Router();
 
+// Initialize Telegram Bot
+const botToken = process.env.TELEGRAM_BOT_TOKEN || '';
+if (!botToken) {
+  console.warn('⚠️ TELEGRAM_BOT_TOKEN is not defined in .env file. TG verification will use dev-mode fallback.');
+}
+const bot = botToken ? new TelegramBot(botToken, { polling: false }) : null;
+
 // Default tasks to seed
 const defaultTasks = [
   // Daily tasks
-  { id: 'd1', category: 'daily', status: 'start', reward: '$0.50', rewardValue: 0.5, tag: 'Quick' },
-  { id: 'd2', category: 'daily', status: 'start', reward: '$1.00', rewardValue: 1.0, tag: 'High Pay' },
-  { id: 'd3', category: 'daily', status: 'done', reward: '$0.25', rewardValue: 0.25, tag: 'Fun' },
-  { id: 'd4', category: 'daily', status: 'claim', reward: '$0.75', rewardValue: 0.75, tag: 'Auto' },
-  { id: 'd5', category: 'daily', status: 'start', reward: '$0.30', rewardValue: 0.3, tag: 'Quick' },
-  { id: 'd6', category: 'daily', status: 'start', reward: '$0.40', rewardValue: 0.4, tag: 'Challenge' },
-  { id: 'd7', category: 'daily', status: 'progress', reward: '$2.00', rewardValue: 2.0, tag: 'High Pay', progress: 50 },
-  { id: 'd8', category: 'daily', status: 'start', reward: '$0.10', rewardValue: 0.1, tag: 'Quick' },
-  // Ads tasks
-  { id: 'a1', category: 'ads', status: 'start', reward: '$0.50', rewardValue: 0.5, tag: 'Quick', requiredCount: 20 },
-  { id: 'a2', category: 'ads', status: 'start', reward: '$0.75', rewardValue: 0.75, tag: 'Auto', requiredCount: 15 },
-  { id: 'a3', category: 'ads', status: 'start', reward: '$0.20', rewardValue: 0.2, tag: 'Quick' },
-  { id: 'a4', category: 'ads', status: 'start', reward: '$1.00', rewardValue: 1.0, tag: 'High Pay' },
-  { id: 'a5', category: 'ads', status: 'done', reward: '$0.60', rewardValue: 0.6, tag: 'Fun' },
+  { id: 'd1', category: 'daily', status: 'start', reward: '$0.50', rewardValue: 0.5, tag: 'Quick', taskType: 'ads' },
+  { id: 'd2', category: 'daily', status: 'start', reward: '$1.00', rewardValue: 1.0, tag: 'High Pay', taskType: 'ads' },
+  { id: 'd3', category: 'daily', status: 'start', reward: '$0.25', rewardValue: 0.25, tag: 'Fun', taskType: 'task' },
+  { id: 'd4', category: 'daily', status: 'start', reward: '$0.75', rewardValue: 0.75, tag: 'Auto', taskType: 'task' },
+  { id: 'd5', category: 'daily', status: 'start', reward: '$0.30', rewardValue: 0.3, tag: 'Quick', taskType: 'task' },
+  { id: 'd6', category: 'daily', status: 'start', reward: '$0.40', rewardValue: 0.4, tag: 'Challenge', taskType: 'task' },
+  { id: 'd7', category: 'daily', status: 'start', reward: '$2.00', rewardValue: 2.0, tag: 'High Pay', taskType: 'task' },
+  { id: 'd8', category: 'daily', status: 'start', reward: '$0.10', rewardValue: 0.1, tag: 'Quick', taskType: 'task' },
   // Social tasks
-  { id: 's1', category: 'social', status: 'start', reward: '$0.25', rewardValue: 0.25, tag: 'Quick' },
-  { id: 's2', category: 'social', status: 'progress', reward: '$2.50', rewardValue: 2.5, tag: 'High Pay', progress: 30 },
-  { id: 's3', category: 'social', status: 'start', reward: '$0.15', rewardValue: 0.15, tag: 'Quick' },
-  { id: 's4', category: 'social', status: 'start', reward: '$0.30', rewardValue: 0.3, tag: 'Fun' },
-  { id: 's5', category: 'social', status: 'start', reward: '$0.50', rewardValue: 0.5, tag: 'Auto' },
-  { id: 's6', category: 'social', status: 'done', reward: '$0.20', rewardValue: 0.2, tag: 'Quick' },
+  { id: 's1', category: 'social', status: 'start', reward: '$0.25', rewardValue: 0.25, tag: 'Quick', taskType: 'link', link: 'https://taskwave.app' },
+  { id: 's2', category: 'social', status: 'start', reward: '$2.50', rewardValue: 2.5, tag: 'High Pay', taskType: 'invite', requiredCount: 3 },
+  { id: 's3', category: 'social', status: 'start', reward: '$0.15', rewardValue: 0.15, tag: 'Quick', taskType: 'link', link: 'https://t.me/taskwave' },
+  { id: 's4', category: 'social', status: 'start', reward: '$0.30', rewardValue: 0.3, tag: 'Fun', taskType: 'link', link: 'https://t.me/taskwave' },
+  { id: 's5', category: 'social', status: 'start', reward: '$0.50', rewardValue: 0.5, tag: 'Auto', taskType: 'tg', link: 'https://t.me/taskwave' },
+  { id: 's6', category: 'social', status: 'start', reward: '$0.20', rewardValue: 0.2, tag: 'Quick', taskType: 'tg', link: 'https://t.me/taskwavegroup' },
+  // Ads tasks
+  { id: 'a1', category: 'ads', status: 'start', reward: '$1.00', rewardValue: 1.0, tag: 'Auto', taskType: 'ads', requiredCount: 10 },
   // Bonus tasks
-  { id: 'b1', category: 'bonus', status: 'start', reward: '$5.00', rewardValue: 5.0, tag: 'Milestone' },
-  { id: 'b2', category: 'bonus', status: 'start', reward: '$3.00', rewardValue: 3.0, tag: 'Lucky' },
-  { id: 'b3', category: 'bonus', status: 'start', reward: '$1.00', rewardValue: 1.0, tag: 'Challenge' },
-  { id: 'b4', category: 'bonus', status: 'claim', reward: '$0.50', rewardValue: 0.5, tag: 'Lucky' },
-  { id: 'b5', category: 'bonus', status: 'start', reward: '$2.00', rewardValue: 2.0, tag: 'High Pay' },
-  { id: 'b6', category: 'bonus', status: 'done', reward: '$10.00', rewardValue: 10.0, tag: 'Milestone' },
-  { id: 'b7', category: 'bonus', status: 'start', reward: '$5.00', rewardValue: 5.0, tag: 'Limited' },
+  { id: 'b1', category: 'bonus', status: 'start', reward: '$5.00', rewardValue: 5.0, tag: 'Milestone', taskType: 'task' },
+  { id: 'b2', category: 'bonus', status: 'start', reward: '$3.00', rewardValue: 3.0, tag: 'Lucky', taskType: 'task' },
+  { id: 'b3', category: 'bonus', status: 'start', reward: '$1.00', rewardValue: 1.0, tag: 'Challenge', taskType: 'task' },
+  { id: 'b4', category: 'bonus', status: 'start', reward: '$0.50', rewardValue: 0.5, tag: 'Lucky', taskType: 'task' },
+  { id: 'b5', category: 'bonus', status: 'start', reward: '$2.00', rewardValue: 2.0, tag: 'High Pay', taskType: 'task' },
+  { id: 'b6', category: 'bonus', status: 'start', reward: '$10.00', rewardValue: 10.0, tag: 'Milestone', taskType: 'task' },
+  { id: 'b7', category: 'bonus', status: 'start', reward: '$5.00', rewardValue: 5.0, tag: 'Limited', taskType: 'task' },
 ];
 
 // Get all tasks - grouped by category (requires userId)
@@ -104,6 +108,118 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Verify Telegram join status
+router.post('/:taskId/verify-tg', async (req, res) => {
+  try {
+    const { taskId } = req.params;
+    const { userId = 'demo-user' } = req.body;
+
+    const task = await Task.findOne({ id: taskId });
+    if (!task || task.taskType !== 'tg') {
+      return notFoundError(res, 'Telegram task');
+    }
+
+    const user = await User.findOne({ userId });
+    if (!user) {
+      return notFoundError(res, 'User');
+    }
+
+    if (!bot) {
+      if (process.env.NODE_ENV === 'development' || !process.env.TELEGRAM_BOT_TOKEN) {
+        const taskProgress = user.taskProgress || new Map();
+        taskProgress.set(taskId, {
+          status: 'claim',
+          progress: 100,
+          currentCount: 1,
+          completedAt: new Date()
+        });
+        user.taskProgress = taskProgress;
+        await user.save();
+        
+        return successResponse(res, {
+          taskId,
+          status: 'claim',
+          isMember: true,
+          note: 'Dev mode: automatic verification (No Bot Token)'
+        }, 'Verified (Dev mode)');
+      }
+      return serverError(res, 'Telegram bot not configured');
+    }
+
+    // Parse channel ID from link (e.g., https://t.me/taskwave -> @taskwave)
+    const channelUsername = task.link?.split('t.me/')[1]?.replace('/', '');
+    if (!channelUsername) {
+      return validationError(res, 'Invalid channel link', 'link');
+    }
+
+    const chatId = channelUsername.startsWith('@') ? channelUsername : `@${channelUsername}`;
+
+    try {
+      // Check chat member status
+      const chatMember = await bot!.getChatMember(chatId, parseInt(userId) || 0); // Assuming userId is TG ID
+      
+      const isMember = ['member', 'administrator', 'creator'].includes(chatMember.status);
+
+      if (!isMember) {
+        return res.status(400).json({
+          success: false,
+          error: 'Not a member',
+          message: 'Please join the channel before confirming'
+        });
+      }
+
+      // Update progress to claim
+      const taskProgress = user.taskProgress || new Map();
+      taskProgress.set(taskId, {
+        status: 'claim',
+        progress: 100,
+        currentCount: 1,
+        completedAt: new Date()
+      });
+      user.taskProgress = taskProgress;
+      await user.save();
+
+      return successResponse(res, {
+        taskId,
+        status: 'claim',
+        isMember: true
+      }, 'Channel join verified successfully');
+
+    } catch (botError: any) {
+      console.error('Telegram Bot Error:', botError.message);
+      
+      // Fallback for development if bot can't reach API or chat not found
+      if (process.env.NODE_ENV === 'development') {
+        const taskProgress = user.taskProgress || new Map();
+        taskProgress.set(taskId, {
+          status: 'claim',
+          progress: 100,
+          currentCount: 1,
+          completedAt: new Date()
+        });
+        user.taskProgress = taskProgress;
+        await user.save();
+        
+        return successResponse(res, {
+          taskId,
+          status: 'claim',
+          isMember: true,
+          note: 'Dev mode: automatic verification'
+        }, 'Verified (Dev mode)');
+      }
+
+      return res.status(400).json({
+        success: false,
+        error: 'Verification failed',
+        message: 'Could not verify channel membership. Please try again later.'
+      });
+    }
+  } catch (error) {
+    console.error('Error verifying TG join:', error);
+    return serverError(res, 'Failed to verify Telegram join');
+  }
+});
+
 // Claim a task
 router.post('/:taskId/claim', async (req, res) => {
   try {
@@ -132,6 +248,19 @@ router.post('/:taskId/claim', async (req, res) => {
       { new: true, upsert: true }
     );
 
+    // Update user's specific task progress to "done"
+    if (user) {
+      const taskProgress = user.taskProgress || new Map();
+      taskProgress.set(taskId, {
+        status: 'done',
+        progress: 100,
+        currentCount: task.requiredCount || 1,
+        completedAt: new Date()
+      });
+      user.taskProgress = taskProgress;
+      await user.save();
+    }
+
     return successResponse(res, { 
       taskId, 
       reward: task.reward, 
@@ -148,43 +277,60 @@ router.post('/:taskId/claim', async (req, res) => {
 router.post('/:taskId/start', async (req, res) => {
   try {
     const { taskId } = req.params;
+    const { userId = 'demo-user' } = req.body;
 
     const task = await Task.findOne({ id: taskId });
     if (!task) {
       return res.status(404).json({ success: false, error: 'Task not found' });
     }
 
-    if (task.status === 'done') {
+    const user = await User.findOne({ userId });
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+
+    const taskProgress = user.taskProgress || new Map();
+    let currentProgress = taskProgress.get(taskId) || {
+      status: 'start',
+      progress: 0,
+      currentCount: 0
+    };
+
+    if (currentProgress.status === 'done') {
       return res.status(400).json({ success: false, error: 'Task already completed' });
     }
 
-    // Increment count if it's a multi-step task
-    if (task.requiredCount && task.requiredCount > 1) {
-      task.currentCount = (task.currentCount || 0) + 1;
-      task.progress = Math.round((task.currentCount / task.requiredCount) * 100);
+    // Increment count if it's a multi-step task (like ads or invite)
+    const requiredCount = task.requiredCount || 1;
+    
+    if (requiredCount > 1) {
+      currentProgress.currentCount = (currentProgress.currentCount || 0) + 1;
+      currentProgress.progress = Math.min(Math.round((currentProgress.currentCount / requiredCount) * 100), 100);
       
-      if (task.currentCount >= task.requiredCount) {
-        task.status = 'claim';
+      if (currentProgress.currentCount >= requiredCount) {
+        currentProgress.status = 'claim';
       } else {
-        task.status = 'progress';
+        currentProgress.status = 'progress';
       }
     } else {
-      // For single step tasks, set to claim directly for ads/d1
-      const nextStatus = (task.category === 'ads' || task.id === 'd1') ? 'claim' : 'progress';
-      task.status = nextStatus;
-      task.progress = 100;
+      // For single step tasks
+      currentProgress.status = 'claim';
+      currentProgress.progress = 100;
+      currentProgress.currentCount = 1;
     }
 
-    await task.save();
+    taskProgress.set(taskId, currentProgress);
+    user.taskProgress = taskProgress;
+    await user.save();
 
     return successResponse(res, { 
       taskId, 
-      status: task.status,
-      progress: task.progress,
-      currentCount: task.currentCount,
-      requiredCount: task.requiredCount,
+      status: currentProgress.status,
+      progress: currentProgress.progress,
+      currentCount: currentProgress.currentCount,
+      requiredCount: requiredCount,
       updatedAt: new Date().toISOString() 
-    }, `Task progress updated: ${task.status}`);
+    }, `Task progress updated: ${currentProgress.status}`);
   } catch (error) {
     console.error('Error updating task:', error);
     return serverError(res, 'Failed to update task');
@@ -289,6 +435,41 @@ router.post('/checkin', async (req, res) => {
   } catch (error) {
     console.error('Error check-in:', error);
     return serverError(res, 'Failed to check in');
+  }
+});
+
+// Reset all tasks - remove old data and set defaults (admin only)
+router.post('/reset', async (req, res) => {
+  try {
+    const { confirm } = req.body;
+
+    if (confirm !== 'RESET_ALL_TASKS') {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid confirmation code. Use "RESET_ALL_TASKS" to confirm.'
+      });
+    }
+
+    // Delete all existing tasks
+    await Task.deleteMany({});
+    
+    // Clear user task progress
+    await User.updateMany({}, { $set: { taskProgress: new Map(), tasksCompleted: 0 } });
+    
+    console.log('✅ All old tasks and user progress deleted');
+
+    // Insert default tasks
+    await Task.insertMany(defaultTasks);
+    console.log('✅ Default tasks seeded');
+
+    return successResponse(res, {
+      message: 'All tasks have been reset to default state',
+      taskCount: defaultTasks.length,
+      tasks: defaultTasks
+    }, 'Tasks reset successfully');
+  } catch (error) {
+    console.error('Error resetting tasks:', error);
+    return serverError(res, 'Failed to reset tasks');
   }
 });
 

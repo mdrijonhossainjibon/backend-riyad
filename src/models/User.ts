@@ -17,7 +17,6 @@ export interface IUser extends Document {
   userId: string;
   name: string;
   email: string;
-  avatar?: string;
   referralCode: string;
   balance: number;
   totalEarned: number;
@@ -40,7 +39,7 @@ const generateReferralCode = () => {
     code += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return code;
-};
+}; 
 
 const AdWatchSchema: Schema = new Schema({
   rewarded: { type: Number, default: 0 },
@@ -59,7 +58,6 @@ const UserSchema: Schema = new Schema({
   userId: { type: String, required: true, unique: true },
   name: { type: String, required: true },
   email: { type: String, required: true, unique: true },
-  avatar: { type: String, default: null },
   referralCode: { type: String, unique: true, default: generateReferralCode },
   balance: { type: Number, default: 0 },
   totalEarned: { type: Number, default: 0 },

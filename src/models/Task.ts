@@ -7,6 +7,8 @@ export interface ITask extends Document {
   reward: string;
   rewardValue: number;
   tag: string;
+  taskType?: 'link' | 'join' | 'invite' | 'task' | 'ads' | 'tg';
+  link?: string;
   progress?: number;
   currentCount?: number;
   requiredCount?: number;
@@ -30,6 +32,8 @@ const TaskSchema: Schema = new Schema({
   reward: { type: String, required: true },
   rewardValue: { type: Number, required: true },
   tag: { type: String, default: 'Quick' },
+  taskType: { type: String, enum: ['link', 'join', 'invite', 'task', 'ads', 'tg'], default: 'task' },
+  link: { type: String },
   progress: { type: Number, default: 0 },
   currentCount: { type: Number, default: 0 },
   requiredCount: { type: Number, default: 1 }
